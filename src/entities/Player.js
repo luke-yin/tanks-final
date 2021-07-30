@@ -12,9 +12,7 @@ export default class Player extends Tank {
     this.socket = socket;
     this.state = state;
   
-    // console.log("Initial State:", state);
-    // console.log("Socket", socket);
-    // this.health = 30;
+    
       this.init();
       this.initEvents()
   }
@@ -177,7 +175,9 @@ export default class Player extends Tank {
               // };
               this.oldDirection = this.direction
               this.oldVelocity = this.body.velocity
-
+          if(!checkVelocityZero){
+            this.scene.tankEngine.play();
+          }
       // if (!checkVelocityZero){
       //    this.play('move', true)
       //   } else {this.play('move', false)}
@@ -185,6 +185,7 @@ export default class Player extends Tank {
     } else{
       this.body.stop(this);
       this.body.setImmovable(true);
+      this.scene.setupSpectateCameraOn(this)
     }
             
             

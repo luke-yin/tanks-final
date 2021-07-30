@@ -1,7 +1,6 @@
 import {Scene} from 'phaser';
 import io from 'socket.io-client';
 import Player from '../entities/Player';
-import Bullet from '../entities/Bullet';
 import EnemyPlayer from '../entities/EnemyPlayer';
 import ProjectilesGroup from '../attacks/ProjectilesGroup';
 import Projectile from '../attacks/Projectile'
@@ -18,26 +17,30 @@ export default class GameScene extends Scene {
       
   }
 
-  /*
-  preload () {
-    this.load.image('box1', '../assets/boxes/1.png');
-  }
-  */
+
             
   create () {
     this.socket = this.registry.get('socket');
     this.state = this.registry.get('state');
     this.socket.emit('in-game',this.state);
     this.scene.bringToTop('scene-game');
+    this.gameTheme = this.sound.add('gameTheme', {loop: true, volume: 0.05});
+    this.shotFired = this.sound.add('shot', {loop: false, volume: 0.1});
+    this.boxDestroy = this.sound.add('boxDestroy', {loop: false, volume: 0.1});
+    this.tankHit = this.sound.add('tankHit', {loop: false, volume: 0.1});
+    this.heartPickUp = this.sound.add('collect', {loop: false, volume: 0.1});
+    this.tankEngine = this.sound.add('tankEngine', {loop:false, volume: 0.1});
     const screenCenterX = this.cameras.main.worldView.x + this.cameras.main.width / 2;
     const screenCenterY = this.cameras.main.worldView.y + this.cameras.main.height / 2;
     const thisScene = this;
+
     this.timerText = this.add.text(screenCenterX, screenCenterY, "Ready", {
       fill: "#00ff00",
       fontSize: "80px",
       fontStyle: "bold",
       fontFamily: "Pixelar"
     }).setDepth(2).setOrigin(0.5);
+
     //map creation and layout
     const map = this.createMap();
     const layers = this.createLayers(map);
@@ -45,11 +48,7 @@ export default class GameScene extends Scene {
     const hearts = this.createHearts(layers.heartLayer)
     const woodBoxes = this.createWoodBoxes(layers.boxWoodLayer);
     const greyBoxes = this.createGreyBoxes(layers.boxGreyLayer);
-    // console.log(layers.wallLayer.layer.data);
-    const layerData = layers.wallLayer.layer.data;
-
-    
-    
+    const layerData = layers.wallLayer.layer.data;  
     const playerSpawnZones = this.getPlayerZones(layers.spawnZone);
     
     const localPlayer = this.createPlayer(playerSpawnZones); 
@@ -62,7 +61,7 @@ export default class GameScene extends Scene {
       console.log(`player at socket ${data.id} has been killed`)
       console.log(`render explosion animation at ${data.x, data.y}`)
     })
-    //----------------------need to creat logic to create multiple enemy based on state.players obj for each player....
+
     const enemyPlayersArray = [];
     for(const player in thisScene.state.players ){
       if(player !== thisScene.socket.id){
@@ -88,10 +87,6 @@ export default class GameScene extends Scene {
     const enemyPlayers = this.createEnemyPlayers(playerSpawnZones, enemyPlayersArray);
    
   
-  // console.log("inside create------------->",enemyPlayers)
-    
-  
-   
 
     
     this.physics.add.collider(localPlayer.projectilesGroup, layers.wallLayer, (projectile, wall) => {
@@ -150,6 +145,11 @@ export default class GameScene extends Scene {
 
 
     this.countDown(this.timerText, localPlayer);
+
+    const{ height, width, zoomfactor, leftTopCorner } = this.config;
+    this.playerFrame = this.add.image(leftTopCorner.x, leftTopCorner.y, 'frame').setOrigin(0).setDepth(1).setScrollFactor(0,0).setAlpha(-5);
+    this.playerHud = this.add.image(leftTopCorner.x, leftTopCorner.y, 'hud').setOrigin(0).setDepth(1).setScrollFactor(0,0).setVisible(false);
+    
    
   } 
 
@@ -295,7 +295,7 @@ export default class GameScene extends Scene {
   createEnemyProjectileBoxCollisions(boxes, enemyPlayers){
     enemyPlayers.forEach((enemyPlayer) =>{
       this.physics.add.overlap(enemyPlayer.projectilesGroup, boxes, (projectile, box) => {
-      
+        this.boxDestroy.play();
        //this.play('boxDestroy', true)
         // box.destroy();
         projectile.hasHit(box);
@@ -327,10 +327,12 @@ export default class GameScene extends Scene {
       }, null, this);
     })
   }
+
   createEnemyProjectilePlayerCollisions(enemyPlayers, player){
     enemyPlayers.forEach((enemyPlayer) => {
       this.physics.add.collider(player, enemyPlayer.projectilesGroup, (player, projectile) => {
         console.log("projectile.damage",projectile.damage)
+        // this.tankHit.play();
         player.healthBar
         player.onHit(projectile.damage);
         projectile.hasHit(player);
@@ -349,7 +351,7 @@ export default class GameScene extends Scene {
 
   createLocalProjectileBoxCollisions(boxes, localProjectileGroup,){
     this.physics.add.overlap(localProjectileGroup, boxes, (projectile, box) => {
-      
+      this.boxDestroy.play();
       projectile.hasHit(box);
       setTimeout(()=>{
         box.play('boxDestroy')
@@ -374,7 +376,7 @@ export default class GameScene extends Scene {
     enemyPlayers.forEach((enemyPlayer) =>{
       this.physics.add.collider(localProjectileGroup, enemyPlayer, (enemyPlayer, projectile) => {
         projectile.hasHit(enemyPlayer);
-     
+        
 
         this.socket.on('playerHasBeenHit', (data)=>{
           enemyPlayer.playDamageTween();
@@ -386,7 +388,7 @@ export default class GameScene extends Scene {
           enemyPlayer.body.stop(this);
           enemyPlayer.body.setImmovable(true);
           setTimeout(()=>{
-            enemyPlayer.disableBody(true,true)
+            enemyPlayer.disableBody(true, false)
           },200)
         })
         this.endGame(true);
@@ -397,6 +399,7 @@ export default class GameScene extends Scene {
 
   onCollectHeart(localPlayer, heart){
     console.log('collecting')
+    this.scene.heartPickUp.play();
     heart.disableBody(true,true)
     if(localPlayer.health < 30){
       localPlayer.health += 10
@@ -432,9 +435,9 @@ export default class GameScene extends Scene {
 
   setupFollowCameraOn(player){
     const{ height, width, zoomfactor, leftTopCorner } = this.config;
-    this.frame = this.add.image(leftTopCorner.x, leftTopCorner.y, 'frame').setOrigin(0).setDepth(1).setScrollFactor(0,0).setAlpha(-5);
-    this.add.image(leftTopCorner.x, leftTopCorner.y, 'hud').setOrigin(0).setDepth(1).setScrollFactor(0,0);
-  
+    // this.frame = this.add.image(leftTopCorner.x, leftTopCorner.y, 'frame').setOrigin(0).setDepth(1).setScrollFactor(0,0).setAlpha(-5);
+    // this.add.image(leftTopCorner.x, leftTopCorner.y, 'hud').setOrigin(0).setDepth(1).setScrollFactor(0,0);
+    this.playerHud.setVisible(true);
     this.cameras.main.setBounds(0,0, width, height)
     this.cameras.main.startFollow(player).zoomTo(zoomfactor, 750);
     console.log("localplayer??????",player.healthBar)
@@ -455,6 +458,20 @@ export default class GameScene extends Scene {
       fill: "#00ff00",
     }).setOrigin(0,0).setDepth(4).setScrollFactor(0,0);
   }
+
+  setupSpectateCameraOn(player){
+    const{ height, width, zoomfactor, leftTopCorner } = this.config;
+    player.healthBar.hideHealthBar();
+    this.cameras.main.setBounds(0,0, width, height)
+    this.cameras.main.startFollow(player).zoomTo(1, 750);
+    this.gameOverText = this.add.text(leftTopCorner.x + 275 , leftTopCorner.y + 5, `GAME OVER`, {
+      fill: "#FF0000",
+      fontSize: '16px',
+      fontStyle: 'bold',
+      fontFamily: 'Pixelar',
+      fill: "#00ff00",
+    }).setOrigin(0,0).setDepth(4).setScrollFactor(0,0);
+  }
  
 
   countDown(text, localPlayer){
@@ -469,15 +486,26 @@ export default class GameScene extends Scene {
         clearInterval(counter);
         text.destroy();
         this.setupFollowCameraOn(localPlayer);
+        this.gameTheme.play();
         setTimeout(()=>{
 
           this.tweens.add({
-            targets: this.frame,
+            targets: this.playerFrame,
             alpha: 1,
             duration: 2000,
             ease: 'Power3'
   
           })
+
+          this.tweens.add({
+            targets: this.playerHud,
+            alpha: 1,
+            duration: 2000,
+            ease: 'Power3'
+  
+          })
+
+          localPlayer.healthBar.showHealthBar();
         },1000)
       } 
 
